@@ -1,6 +1,7 @@
 using BepInEx;
 using HarmonyLib;
 using System.Collections.Generic;
+using System.Reflection.Emit;
 using UnityEngine;
 
 namespace BalaurBohemianBroken {
@@ -90,82 +91,164 @@ namespace BalaurBohemianBroken {
         }
     }
 
+    [HarmonyPatch]
+    public class Patch_AutoPickUpItem {
+//        public static bool AutoPickup(Item item, Body character) {
+//                return false;
+//            if (!item.Stats.wearable)
+//            {
+//                StorageLogic.AutoPickup(item);
+//            }
+//            else
+//            {
+
+        //Reverse patch to keep method signature
+        [HarmonyReversePatch(HarmonyReversePatchType.Snapshot)]
+        [HarmonyPatch(typeof(Body))]
+        [HarmonyPatch(nameof(Body.AutoPickUpItem))]
+        //Replace middle part with a function call to StorageLogic.AutoPickup
+        public void rev_AutoPickUpItem(Item item) {
+            IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions) {
+                if(instructions == null) { return instructions; };
+                var startidx = -1;
+                var endidx = -1;
+                var methodidx = -1;
+                List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
+                for (var i = 0; i < codes.Count; i++) {
+                    if (methodidx == -1) {
+                        if (codes[i].IsLdarg()) {
+                            startidx = i;
+                        } else if (codes[i].Calls(AccessTools.Method(typeof(Body), nameof(Body.FirstEmptySlot)))) {
+                            methodidx = i;
+                        }
+                    } else {
+                        if (codes[i].opcode == OpCodes.Endfinally) {
+                            endidx = i;
+                            break;
+                        }
+                    }
+                }
+
+                if (endidx != -1) {
+                    //C# version doesn't support array declarations + assignment
+                    System.Type[] paramtypes = new System.Type[1];
+                    paramtypes[0] = typeof(Item);
+
+                    List<CodeInstruction> callfunct = new List<CodeInstruction>();
+                    callfunct.Add(new CodeInstruction(OpCodes.Ldarg_1));
+                    callfunct.Add(CodeInstruction.Call(typeof(StorageLogic), nameof(StorageLogic.AutoPickup), paramtypes));
+                    callfunct.Add(new CodeInstruction(OpCodes.Ret));
+
+                    codes.RemoveRange(startidx, endidx - startidx + 1);
+                    codes.InsertRange(startidx, (IEnumerable<CodeInstruction>)callfunct);
+                }
+
+                return (IEnumerable<CodeInstruction>)codes;
+            }
+            //suppress unused
+            _ = Transpiler(null);
+        }
+    }
+
+    public class ManualPatch_SpawnResult {
+        public static IEnumerable<CodeInstruction> Replace_AutoPickfunct(IEnumerable<CodeInstruction> instructions) {
+            //IEnumerable<CodeInstruction> MethodReplacer doesn't seem to work for some reason
+            List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
+            List<int> methodidxs = new List<int>();
+
+            for(var i = 0; i < codes.Count; i++) {
+                if(codes[i].Calls(AccessTools.Method(typeof(Body), nameof(Body.AutoPickUpItem)))) {
+                    methodidxs.Add(i);
+                }
+            }
+
+            //C# version doesn't support array declarations + assignment
+            System.Type[] functtypes = new System.Type[1];
+            functtypes[0] = typeof(Item);
+            CodeInstruction callfunct = CodeInstruction.Call(typeof(Patch_AutoPickUpItem), nameof(Patch_AutoPickUpItem.rev_AutoPickUpItem), functtypes);
+            for(var i = 0; i < methodidxs.Count; i++) {
+                codes.RemoveAt(methodidxs[i]);
+                codes.Insert(methodidxs[i], callfunct);
+            }
+            return (IEnumerable<CodeInstruction>)codes;
+        }
+    }
+
     [HarmonyPatch(typeof(RecipeResult))]
     [HarmonyPatch(nameof(RecipeResult.SpawnResult))]
     public class Patch_SpawnResult {
-        public static bool Prefix(int recipeInt, RecipeResult __instance) {
-            // The is largely the same code from decomp, with a different storage logic placed in.
-            // I tossed up whether I wanted to do this, or whether I wanted to use a transpiler to patch it.
-            // In either case, if the code changes at all, I'd need to rewrite it.
-            //
-            // A transpiler might be more durable, as I'd just need to change where the hook starts.
-            // Plus, it also means I'm not potentially messing with other mods by skipping a function.
-            // But this is much faster to develop with.
-            // 
-            // If mod compatibility becomes an issue, I'll do a transpiler.
-
-            int num1 = PlayerCamera.main.body.skills.INT - recipeInt;
-            float crafted_condition = 1f;
-            if (num1 < 0 && Random.value < 0.5) {
-                switch (num1) {
-                    case -3:
-                        Body body = PlayerCamera.main.body;
-                        body.DoGoreSound();
-                        for (int index = 5; index <= 8; index += 3) {
-                            body.limbs[index].pain += 40f;
-                            body.limbs[index].skinHealth -= 15f;
-                            body.limbs[index].bleedAmount += Random.Range(2f, 5f);
+        //Replace flag if statement with LiquidStorageLogic.StoreLiquid function
+        //Decompiled code from v1.0.5
+//        {
+//            string id = __instance.id;
+//            float amount = __instance.resultCondition * num2;
+//            if (!LiquidStorageLogic.StoreLiquid(__instance.id, __instance.resultCondition * num2))
+//            {
+//                GameObject gameObject = Utils.Create("craftingbottle", PlayerCamera.main.body.transform.position, 0f);
+//                Item component = gameObject.GetComponent<Item>();
+        public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions) {
+            var ifstartidx = -1;
+            var startidx = -1;
+            var endidx = -1;
+            var stage = 0;
+            List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
+            for (var i = 0; i < codes.Count; i++) {
+                switch(stage) {
+                    case 0:
+                        if(codes[i].opcode == OpCodes.Ldc_I4_0) {
+                            ifstartidx = i;
+                        //Is Operand matching broken?
+                        } else if(ifstartidx != -1 && codes[i].ToString() == "stloc.s 5 (System.Boolean)") {
+                            stage = 1;
                         }
-
-                        return false;
-                    case -1:
-                        crafted_condition = Random.Range(0.2f, 0.9f);
-                        break;
+                    break;
+                    case 1:
+                        if (codes[i].LoadsField(AccessTools.Field(typeof(PlayerCamera), nameof(PlayerCamera.main)))) {
+                            startidx = i;
+                        } else if (codes[i].Calls(AccessTools.Method(typeof(Body), nameof(Body.GetAllItemsThorough)))) {
+                            stage = 2;
+                        }
+                    break;
+                    case 2:
+                        if (codes[i].opcode == OpCodes.Endfinally) {
+                            endidx = i;
+                            stage = 3;
+                        }
+                    break;
                     default:
-                        return false;
+                        i = codes.Count;
+                    break;
                 }
             }
-            
-            // TODO: I don't change much of this code! I could make it a transpiler with a little work.
-            StorageLogic.storing_in =  new HashSet<string>();  // Added this line.
-            for (int index = 0; index < __instance.amount; ++index) {
-                if (__instance.isLiquid) {
-                    string item_id = __instance.id;
-                    float amount = __instance.resultCondition * crafted_condition;
-                    bool try_store = LiquidStorageLogic.StoreLiquid(__instance.id, __instance.resultCondition * crafted_condition);
-            
-                    // Create temp bottle.
-                    if (!try_store) {
-                        GameObject gameObject = Utils.Create("craftingbottle",
-                            (Vector2)PlayerCamera.main.body.transform.position, 0.0f);
-                        Item component = gameObject.GetComponent<Item>();
-                        component.condition = __instance.resultCondition;
-                        StorageLogic.AutoPickup(component, PlayerCamera.main.body);  // This code is changed.
-                        double num4 = (double)component.GetComponent<WaterContainerItem>().AddLiquid(item_id, amount);
-                        Object.Destroy((Object)gameObject, 300f);
-                    }
-                }
-                else {
-                    Item component3 = Utils
-                        .Create(__instance.id, (Vector2)PlayerCamera.main.body.transform.position, 0.0f)
-                        .GetComponent<Item>();
-                    component3.condition = __instance.resultCondition * crafted_condition;
-                    StorageLogic.AutoPickup(component3, PlayerCamera.main.body);  // This code is changed.
-                    if ((bool)(Object)component3.battery)
-                        component3.battery.UnloadBattery(true);
-                    WaterContainerItem component4;
-                    if (!__instance.dontDrainResultLiquid &&
-                        component3.TryGetComponent<WaterContainerItem>(out component4)) {
-                        component4.stack = new List<LiquidStack>();
-                        component3.condition = 0.0f;
-                    }
-                }
-            }
-            if (StorageLogic.notify_where_stored)
-                StorageLogic.InformWhereStored();
-            
 
-            return false;
+            if (endidx != -1) {
+                codes.RemoveRange(startidx, endidx - startidx + 1);
+                codes.RemoveAt(ifstartidx);
+
+                System.Type[] liqtype = new System.Type[2];
+                liqtype[0] = typeof(string);
+                liqtype[1] = typeof(float);
+
+                List<CodeInstruction> ifstatement = new List<CodeInstruction>();
+                ifstatement.Add(new CodeInstruction(OpCodes.Ldarg_0));
+                ifstatement.Add(CodeInstruction.LoadField(typeof(RecipeResult), nameof(RecipeResult.id)));
+                ifstatement.Add(new CodeInstruction(OpCodes.Ldarg_0));
+                ifstatement.Add(CodeInstruction.LoadField(typeof(RecipeResult), nameof(RecipeResult.resultCondition)));
+                ifstatement.Add(new CodeInstruction(OpCodes.Ldloc_1));
+                ifstatement.Add(new CodeInstruction(OpCodes.Mul));
+                ifstatement.Add(CodeInstruction.Call(typeof(LiquidStorageLogic), nameof(LiquidStorageLogic.StoreLiquid), liqtype));
+
+                codes.InsertRange(ifstartidx, ifstatement);
+            }
+
+            return (IEnumerable<CodeInstruction>)codes;
+        }
+
+        public static void Postfix(int recipeInt, RecipeResult __instance) {
+            if (StorageLogic.notify_where_stored) {
+                StorageLogic.InformWhereStored();
+            }
+            StorageLogic.storing_in =  new HashSet<string>();
         }
     }
 }

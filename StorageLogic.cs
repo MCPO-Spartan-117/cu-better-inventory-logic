@@ -87,26 +87,11 @@ namespace BalaurBohemianBroken {
             },
         };
 
-        public static void AutoPickup(Item item, Body character) {
-            // Based on Body.AutoPickUpItem
-            if (item.Stats.HasTag("noautopickup"))
-                return;
-            if (!item.Stats.wearable)
-            {
-                // TODO: This is the only part of this code I change. I could transpile this.
-                string stored_in = AddItemToInventory(item);
-                if (stored_in == null)
-                    stored_in = "the floor";
-                storing_in.Add(stored_in);
-            }
-            else
-            {
-                Item wearableBySlotId = character.GetWearableBySlotID(item.Stats.wearSlotId);
-                if ((bool) (UnityEngine.Object) wearableBySlotId)
-                    character.DropItem(wearableBySlotId);
-                character.WearWearable(item);
-                PlayerCamera.main.UpdateWearables();
-            }
+        public static void AutoPickup(Item item) {
+            string stored_in = AddItemToInventory(item);
+            if (stored_in == null)
+                stored_in = "the floor";
+            storing_in.Add(stored_in);
         }
         
         public static string AddItemToInventory(Item item) {

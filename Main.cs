@@ -2,6 +2,7 @@
 using HarmonyLib;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using UnityEngine;
 
 // Inventory ideas:
@@ -23,11 +24,41 @@ namespace BalaurBohemianBroken {
     [BepInPlugin("com.balaur.BetterLogic", "BetterInventoryLogic", "1.0.4")]
     public class BetterInventoryLogic : BaseUnityPlugin {
         public static BetterInventoryLogic instance;
-        
+        Harmony harmony;
+
         public void Awake() {
             instance = this;
-            Harmony harmony = new Harmony("com.balaur.BetterLogic");
+            harmony = new Harmony("com.balaur.BetterLogic");
             harmony.PatchAll();
+        }
+
+        //Wait for all plugins to be loaded
+        public void Start() {
+            var original_reciperes = AccessTools.Method(typeof(RecipeResult), nameof(RecipeResult.SpawnResult));
+            harmony.Patch(original_reciperes, transpiler: new HarmonyMethod(AccessTools.Method(typeof(ManualPatch_SpawnResult), nameof(ManualPatch_SpawnResult.Replace_AutoPickfunct))));
+
+            //Replace funct in all prefixes
+            var patches = Harmony.GetPatchInfo(original_reciperes);
+            foreach(Patch p in patches.Prefixes) {
+                harmony.Patch(p.PatchMethod, transpiler: new HarmonyMethod(AccessTools.Method(typeof(ManualPatch_SpawnResult), nameof(ManualPatch_SpawnResult.Replace_AutoPickfunct))));
+            }
+
+            //Remake original function with all patches
+            MethodInfo original_autopickup = AccessTools.Method(typeof(Body), nameof(Body.AutoPickUpItem));
+            MethodInfo rev_autopickup = AccessTools.Method(typeof(Patch_AutoPickUpItem), nameof(Patch_AutoPickUpItem.rev_AutoPickUpItem));
+            var autopatches = Harmony.GetPatchInfo(original_autopickup);
+            //Unfortunely there doesn't seem to be a multi-patch system so this spams the previous patches
+            foreach(Patch p in autopatches.Prefixes) {
+                harmony.Patch(rev_autopickup, prefix: new HarmonyMethod(p.GetMethod(original_autopickup)));
+            }
+
+            foreach(Patch p in autopatches.Postfixes) {
+                harmony.Patch(rev_autopickup, postfix: new HarmonyMethod(p.GetMethod(original_autopickup)));
+            }
+
+            foreach(Patch p in autopatches.Finalizers) {
+                harmony.Patch(rev_autopickup, finalizer: new HarmonyMethod(p.GetMethod(original_autopickup)));
+            }
         }
 
         public static List<Item> GetAvailableItems(bool include_pickups) {
