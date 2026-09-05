@@ -130,14 +130,14 @@ namespace BalaurBohemianBroken {
                 }
 
                 if (endidx != -1) {
-                    //C# version doesn't support array declarations + assignment
-                    System.Type[] paramtypes = new System.Type[1];
-                    paramtypes[0] = typeof(Item);
-
-                    List<CodeInstruction> callfunct = new List<CodeInstruction>();
-                    callfunct.Add(new CodeInstruction(OpCodes.Ldarg_1));
-                    callfunct.Add(CodeInstruction.Call(typeof(StorageLogic), nameof(StorageLogic.AutoPickup), paramtypes));
-                    callfunct.Add(new CodeInstruction(OpCodes.Ret));
+                    System.Type[] paramtypes = new System.Type[1] {
+                        typeof(Item)
+                    };
+                    List<CodeInstruction> callfunct = new List<CodeInstruction> {
+                        new CodeInstruction(OpCodes.Ldarg_1),
+                        CodeInstruction.Call(typeof(StorageLogic), nameof(StorageLogic.AutoPickup), paramtypes),
+                        new CodeInstruction(OpCodes.Ret)
+                    };
 
                     codes.RemoveRange(startidx, endidx - startidx + 1);
                     codes.InsertRange(startidx, (IEnumerable<CodeInstruction>)callfunct);
@@ -162,14 +162,16 @@ namespace BalaurBohemianBroken {
                 }
             }
 
-            //C# version doesn't support array declarations + assignment
-            System.Type[] functtypes = new System.Type[1];
-            functtypes[0] = typeof(Item);
-            CodeInstruction callfunct = CodeInstruction.Call(typeof(Patch_AutoPickUpItem), nameof(Patch_AutoPickUpItem.rev_AutoPickUpItem), functtypes);
+            System.Type[] paramtypes = new System.Type[1] {
+                typeof(Item)
+            };
+            CodeInstruction callfunct = CodeInstruction.Call(typeof(Patch_AutoPickUpItem), nameof(Patch_AutoPickUpItem.rev_AutoPickUpItem), paramtypes);
+
             for(var i = 0; i < methodidxs.Count; i++) {
                 codes.RemoveAt(methodidxs[i]);
                 codes.Insert(methodidxs[i], callfunct);
             }
+
             return (IEnumerable<CodeInstruction>)codes;
         }
     }
@@ -225,18 +227,19 @@ namespace BalaurBohemianBroken {
                 codes.RemoveRange(startidx, endidx - startidx + 1);
                 codes.RemoveAt(ifstartidx);
 
-                System.Type[] liqtype = new System.Type[2];
-                liqtype[0] = typeof(string);
-                liqtype[1] = typeof(float);
-
-                List<CodeInstruction> ifstatement = new List<CodeInstruction>();
-                ifstatement.Add(new CodeInstruction(OpCodes.Ldarg_0));
-                ifstatement.Add(CodeInstruction.LoadField(typeof(RecipeResult), nameof(RecipeResult.id)));
-                ifstatement.Add(new CodeInstruction(OpCodes.Ldarg_0));
-                ifstatement.Add(CodeInstruction.LoadField(typeof(RecipeResult), nameof(RecipeResult.resultCondition)));
-                ifstatement.Add(new CodeInstruction(OpCodes.Ldloc_1));
-                ifstatement.Add(new CodeInstruction(OpCodes.Mul));
-                ifstatement.Add(CodeInstruction.Call(typeof(LiquidStorageLogic), nameof(LiquidStorageLogic.StoreLiquid), liqtype));
+                System.Type[] paramtypes = new System.Type[2] {
+                    typeof(string),
+                    typeof(float)
+                };
+                List<CodeInstruction> ifstatement = new List<CodeInstruction> {
+                    new CodeInstruction(OpCodes.Ldarg_0),
+                    CodeInstruction.LoadField(typeof(RecipeResult), nameof(RecipeResult.id)),
+                    new CodeInstruction(OpCodes.Ldarg_0),
+                    CodeInstruction.LoadField(typeof(RecipeResult), nameof(RecipeResult.resultCondition)),
+                    new CodeInstruction(OpCodes.Ldloc_1),
+                    new CodeInstruction(OpCodes.Mul),
+                    CodeInstruction.Call(typeof(LiquidStorageLogic), nameof(LiquidStorageLogic.StoreLiquid), paramtypes)
+                };
 
                 codes.InsertRange(ifstartidx, ifstatement);
             }
